@@ -1,0 +1,12 @@
+Django==4.2.7
+psycopg2==2.9.9
+djangorestframework==3.14.0
+PyJWT==1.7.1
+pillow==10.1.0
+phonenumbers==8.13.24
+python-decouple==3.8
+PyJWT==1.7.1
+django-cors-headers==4.3.0
+djangorestframework-simplejwt==5.2.2
+asgiref==3.7.2
+
