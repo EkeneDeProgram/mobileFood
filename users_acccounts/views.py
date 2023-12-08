@@ -49,7 +49,6 @@ class RegistrationView(CreateAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 
-
 # Define view to login user with email
 class LoginUserView(APIView):
     def post(self, request):
@@ -85,7 +84,7 @@ class LoginUserView(APIView):
             return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
         
 
-    
+# Define view to verify user with verification code    
 class VerifyUserView(APIView):
     serializer_class = VerifyUserSerializers
 
@@ -131,7 +130,7 @@ class VerifyUserView(APIView):
         return Response(response_data, status=status.HTTP_200_OK)
     
     
-
+# Define view to get user data
 class GetUserView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -149,4 +148,16 @@ class GetUserView(APIView):
 
         return Response(response_data, status=status.HTTP_200_OK)
 
+
+# Define view to logout user 
+class LogoutUserView(APIView):
+    serializer_class=LogoutUserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer=self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+ 
 
