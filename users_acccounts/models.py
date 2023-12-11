@@ -9,7 +9,7 @@ import uuid
 
 
 
-
+# Define model for address
 class Address(models.Model):
     uuid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     street = models.CharField(max_length=255)
@@ -19,7 +19,7 @@ class Address(models.Model):
     longitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
 
 
-
+# Define model for user
 class User(AbstractBaseUser, PermissionsMixin):
     uuid = models.UUIDField(primary_key=True, default=uuid.uuid4, unique=True, editable=False)
     first_name = models.CharField(max_length=255, verbose_name=_("First Name"))
