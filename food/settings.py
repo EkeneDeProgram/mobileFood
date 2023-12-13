@@ -167,8 +167,8 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
     "AUTH_HEADER_TYPES": ("Bearer",),
     "SIGNING_KEY": config("SECRET_KEY"),
-    "USER_ID_FIELD": "uuid",
-    "USER_ID_CLAIM": "user_uuid"
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id"
   
 }
 

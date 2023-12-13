@@ -118,7 +118,7 @@ class VerifyUserView(APIView):
 
             # Create a dictionary with user information and tokens
             response_data = {
-                "uuid": user.uuid,
+                "uuid": user.id,
                 "full_name": user.full_name,
                 "email": user.email,
                 "phone_number": user.phone_number,
@@ -132,7 +132,39 @@ class VerifyUserView(APIView):
         else:
             return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
         
+
+# Define view to resend verification code to user
+class ResendVerificationCodeView(APIView):
+    def put(self, request):
+        # Get the user based on the provided email
+        email = request.data.get("email")
+        user = get_user_model().objects.filter(email=email).first()
+
+        if not user:
+            return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not user.deleted and not user.block:
+            # Check if the user is already verified
+            if user.is_verified:
+                return Response({"detail": "User is already verified"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Generate and save a new verification code
+            verification_code = generate_verification_code()
+            hash_verification_code = hash_VC(verification_code)
+
+            user.hashed_verification_code = hash_verification_code
+            user.save()
+
+            # Send the new verification code via email
+            send_verification_email(email, verification_code)
+
+            return Response({"message": f"{user.full_name} Verification code resent successfully to {user.email}"}, status=status.HTTP_200_OK)
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
         
+
+
+
 # Define view to get user data
 class GetUserView(APIView):
     permission_classes = [IsAuthenticated]
@@ -141,6 +173,8 @@ class GetUserView(APIView):
         user = request.user
 
         if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
 
             # Create a dictionary with user information and additional data
             serializer = UserSerializer(user)
@@ -164,6 +198,8 @@ class UpdateUserEmailView(APIView):
         user = request.user
 
         if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
 
             serializer = UpdateUserEmailSerializer(data=request.data)
             if serializer.is_valid():
@@ -212,6 +248,8 @@ class UpdateUserPhoneNumberView(APIView):
         user = request.user
 
         if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
 
             serializer = UpdateUserPhoneNumberSerializer(data=request.data)
             if serializer.is_valid():
@@ -251,6 +289,8 @@ class UpdateUserDetailsView(APIView):
         user = request.user
 
         if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
 
             serializer = UpdateUserDetailsSerializer(data=request.data, partial=True)
             if serializer.is_valid():
@@ -276,6 +316,9 @@ class UpdateUserAddressView(APIView):
         user = request.user
         
         if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+            
             street = request.data.get("street")
             city = request.data.get("city")
             state = request.data.get("state")
@@ -324,19 +367,241 @@ class DeleteUserView(APIView):
     def put(self, request):
         user = request.user
 
-        # Update user deleted to true
-        user.deleted = True
-        user.is_verified = False
-        user.is_active = False
-        user.save()
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                    return Response({"Message": f"{user.full_name} your account has not been verified"})
 
-        response_data = {
-            "message": f"{user.full_name} Your account has been deleted successfully"
-        }
+            # Update user deleted to true
+            user.deleted = True
+            user.is_verified = False
+            user.is_active = False
+            user.save()
 
-        return Response(response_data, status=status.HTTP_200_OK)
+            response_data = {
+                "message": f"{user.full_name} Your account has been deleted successfully"
+            }
+
+            return Response(response_data, status=status.HTTP_200_OK)
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
 
 
+# Define view to create restaurant
+class RestaurantCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                    return Response({"Message": f"{user.full_name} your account has not been verified"})
+            
+            if user.is_vendor:
+                # Generate verification code for user
+                activation_code = generate_verification_code()
+
+                # Hash verification code
+                hashed_activation_code = hash_VC(activation_code)
+
+                # Add hashed verification code to the request data
+                request.data['hashed_verification_code'] = hashed_activation_code
+
+                serializer = RestaurantSerializer(data=request.data)
+
+                if serializer.is_valid():
+                    # Save the restaurant instance to the database
+                    restaurant_instance = serializer.save(user=user) 
+
+                     # Send the verification code to the restaurant's email
+                    send_activation_email(serializer.data['email'], activation_code)
+
+                    # Exclude 'hashed_verification_code' from the response
+                    serialized_data = RestaurantSerializer(restaurant_instance).data
+
+                    return Response({
+                        "restautrant_detail": serialized_data,
+                        "Message": f"{user.full_name} {restaurant_instance.name} created successfully! an activation code has been sent to {restaurant_instance.email}",
+                    },   status=status.HTTP_201_CREATED)
+                
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({"Message": f"{user.full_name} You are not authorized to perform this operation"})
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+
+
+# Define view to activate restaurant
+class ActivateRestaurantView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                    return Response({"Message": f"{user.full_name} your account has not been verified"})
+            
+            if user.is_vendor:
+                # Get the verification code from the request data
+                activation_code = request.data.get("activation_code")
+
+                # Hash the activation code
+                hashed_activation_code = hash_VC(activation_code)
+                restaurant = Restaurant.objects.get(hashed_verification_code=hashed_activation_code)
+
+                if restaurant:
+                    restaurant.is_active = True
+                    restaurant.save()
+
+                    return Response({"Message": f"{user.full_name} Your restaurant {restaurant.name} has been activated"})
+            else:
+                return Response({"Message": f"{user.full_name} You are not authorized to perform this operation"})
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+
+
+# Define view to update restaurant location
+class UpdateRestaurantLocationView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, restaurant_id):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+
+            if user.is_vendor:
+
+                try:
+                    # Get the restaurant instance
+                    restaurant_instance = Restaurant.objects.get(id=restaurant_id)
+                except Restaurant.DoesNotExist:
+                    return Response({"Message": "Restaurant not found"}, status=status.HTTP_404_NOT_FOUND)
+
+                # Check if the authenticated user is the owner of the restaurant
+                if restaurant_instance.user == user:
+                    if restaurant_instance.is_active:
+
+                        street = request.data.get("street")
+                        city = request.data.get("city")
+                        state = request.data.get("state")
+                        latitude = request.data.get("latitude")
+                        longitude = request.data.get("longitude")
+
+                        # Check if the restaurant already has a location
+                        if restaurant_instance.location:
+                            # Update only the specified location fields
+                            if street:
+                                restaurant_instance.location.street = street
+                            if city:
+                                restaurant_instance.location.city = city
+                            if state:
+                                restaurant_instance.location.state = state
+                            if latitude:
+                                restaurant_instance.location.latitude = latitude
+                            if longitude:
+                                restaurant_instance.location.longitude = longitude
+                            restaurant_instance.location.save()
+                        else:
+                            # If the restaurant does not have an associated location, create one
+                            location = Location.objects.create(
+                                street=street,
+                                city=city,
+                                state=state,
+                                latitude=latitude,
+                                longitude=longitude,
+                                restaurant=restaurant_instance  # Set the restaurant_id
+                            )
+                            restaurant_instance.location = location
+                            restaurant_instance.save()
+
+                        # Serialize the updated address details
+                        location_serializer = LocationSerializer(restaurant_instance.location)
+                        response_data = {
+                            "message": "Location updated successfully",
+                            "location": location_serializer.data,
+                        }
+
+                        return Response(response_data, status=status.HTTP_200_OK)
+
+                    else:
+                        return Response({"Message": f"Your {restaurant_instance.name} has not been activated"})
+
+                else:
+                    return Response({"Message": "You are not authorized to update this restaurant"}, status=status.HTTP_403_FORBIDDEN)
+
+            else:
+                return Response({"Message": f"{user.full_name} You are not authorized to perform this operation"})
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+
+
+# Define view to update restaurant detail
+class UpdateRestaurantDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, restaurant_id):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+
+            if user.is_vendor:
+
+                try:
+                    # Get the restaurant instance
+                    restaurant_instance = Restaurant.objects.get(id=restaurant_id)
+                except Restaurant.DoesNotExist:
+                    return Response({"Message": "Restaurant not found"}, status=status.HTTP_404_NOT_FOUND)
+
+                # Check if the authenticated user is the owner of the restaurant
+                if restaurant_instance.user == user:
+                    if restaurant_instance.is_active:
+
+                        name = request.data.get("name")
+                        description = request.data.get("description")
+                        opening_hours = request.data.get("opening_hours")
+                        closing_hours = request.data.get("closing_hours")
+                        days_of_operation = request.data.get("days_of_operation")
+
+
+                        # Update only the specified  fields
+                        if name:
+                            restaurant_instance.name = name
+                        if description:
+                            restaurant_instance.description = description
+                        if opening_hours:
+                            restaurant_instance.opening_hours = opening_hours
+                        if closing_hours:
+                            restaurant_instance.closing_hours = closing_hours
+                        if days_of_operation:
+                                restaurant_instance.location.days_of_operation = days_of_operation
+
+                        restaurant_instance.save()
+                        # Serialize the updated address details
+                        restaurant_serializer = RestaurantSerializer(restaurant_instance)
+                        response_data = {
+                            "message": "Restaurant updated successfully",
+                            "location": restaurant_serializer.data,
+                        }
+
+                        return Response(response_data, status=status.HTTP_200_OK)
+
+                    else:
+                        return Response({"Message": f"Your {restaurant_instance.name} has not been activated"})
+
+                else:
+                    return Response({"Message": "You are not authorized to update this restaurant"}, status=status.HTTP_403_FORBIDDEN)
+
+            else:
+                return Response({"Message": f"{user.full_name} You are not authorized to perform this operation"})
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+
+    
 # Define view to logout user 
 class LogoutUserView(APIView):
     serializer_class=LogoutUserSerializer

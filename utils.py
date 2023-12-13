@@ -1,5 +1,6 @@
 import random
 from django.core.mail import send_mail
+from traceback import print_exc
 import hashlib
 from decouple import config
 
@@ -35,6 +36,21 @@ def send_verification_email(email, verification_code):
     try:
         send_mail(subject, message, from_email, recipient_list)
     except Exception as e:
-        print(f"An error occurred: {e}")
+        # Print the full traceback to see the detailed error message
+        print("An error occurred:")
+        print_exc()
 
+
+# Send verification code to email
+def send_activation_email(email, verification_code):
+    subject = "Your Bellyfied Restaurant activation code"
+    message = f"Your activation code is: {verification_code}"
+    from_email = "kukiworldwideng@gmail.com" 
+    recipient_list = [email]
+    try:
+        send_mail(subject, message, from_email, recipient_list)
+    except Exception as e:
+        # Print the full traceback to see the detailed error message
+        print("An error occurred:")
+        print_exc()
 

@@ -20,10 +20,10 @@ class UserAuthentication(BaseAuthentication):
         try:
             # Decode the access token
             decoded_token = AccessToken(access_token, verify=False).payload
-            user_id = decoded_token["user_uuid"]
+            user_id = decoded_token["user_id"]
 
             # Implement logic to retrieve the vendor based on vendor_id
-            user = User.objects.get(uuid=user_id)
+            user = User.objects.get(id=user_id)
 
             # Return a tuple of (user, None) to indicate successful authentication
             return user, None
