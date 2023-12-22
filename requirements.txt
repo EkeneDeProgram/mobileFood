@@ -9,4 +9,5 @@ PyJWT==1.7.1
 django-cors-headers==4.3.0
 djangorestframework-simplejwt==5.2.2
 asgiref==3.7.2
+GDAL==3.4.3
 

@@ -13,9 +13,17 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 from decouple import config
 from datetime import timedelta
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+
+# Add the directory containing GDAL DLL to the system's PATH
+os.environ['PATH'] = 'C:\\Users\\User\\Documents\\mobileFood\\env\\Lib\\site-packages\\osgeo;' + os.environ.get('PATH')
+
+GDAL_LIBRARY_PATH = os.environ.get('GDAL_LIBRARY_PATH', 'C:\\Users\\User\\Documents\\mobileFood\\env\\Lib\\site-packages\\osgeo\\gdal304.dll')
 
 
 # Quick-start development settings - unsuitable for production
@@ -46,6 +54,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "users_acccounts",
     "corsheaders",
+    "django.contrib.gis",
 ]
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
@@ -95,7 +104,8 @@ WSGI_APPLICATION = 'food.wsgi.application'
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        # "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django.contrib.gis.db.backends.postgis",
         "NAME": config("DB_NAME"),
         "USER": config("DB_USER"),
         "PASSWORD": config("DB_PASSWORD"),

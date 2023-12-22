@@ -1,7 +1,9 @@
 from rest_framework import serializers
-from .models import User, Address, Restaurant, Location
-from django.contrib.auth import get_user_model
+from .models import User, Address, Restaurant, Location, Category, Menu
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+from django.contrib.gis.geos import Point
+from django.core.serializers.json import DjangoJSONEncoder
+
 
 
 # Define serializer for user registration
@@ -42,13 +44,40 @@ class  UpdateUserPhoneNumberSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
 
 
+# class PointSerializer(serializers.BaseSerializer):
+#     def to_representation(self, obj):
+#         return {'longitude': obj.x, 'latitude': obj.y}
+
+#     def to_internal_value(self, data):
+#         return Point(data['longitude'], data['latitude'])
+    
+class PointSerializer(serializers.BaseSerializer):
+    def to_representation(self, obj):
+        if obj:
+            return {'longitude': obj.x, 'latitude': obj.y}
+        return None
+
+    def to_internal_value(self, data):
+        if data and 'longitude' in data and 'latitude' in data:
+            return Point(x=data['longitude'], y=data['latitude'])
+        return None
+    
+
+
 # Define serializer for address
 class AddressSerializer(serializers.ModelSerializer):
+    point = PointSerializer(required=False)
+
     class Meta:
         model = Address
-        fields = ["id", "street", "city", "state", "latitude", "longitude"]
+        fields = ["id", "street", "city", "state", "latitude", "longitude", "point"]
 
-    
+        extra_kwargs = {
+            "latitude": {"required": False},
+            "longitude": {"required": False},
+        }
+
+       
 # Define serializer for user detail update
 class UpdateUserDetailsSerializer(serializers.Serializer):
     first_name = serializers.CharField(required=False)
@@ -67,25 +96,51 @@ class UpdateUserDetailsSerializer(serializers.Serializer):
         return instance
 
 
+# Define serializer for location
+class LocationSerializer(serializers.ModelSerializer):
+    point = PointSerializer(required=False)
+    
+    class Meta:
+        model = Location
+        fields = ["id", "street", "city", "state", "latitude", "longitude", "point"]
+
+        extra_kwargs = {
+            "latitude": {"required": False},
+            "longitude": {"required": False},
+
+        }
+
+
 # Define serializer for Restaurant
 class RestaurantSerializer(serializers.ModelSerializer):
-    hashed_verification_code = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    locations = LocationSerializer(many=True, read_only=True)
 
     class Meta:
         model = Restaurant
-        fields = ["id", "name", "description", "phone_number", "email", "opening_hours", "closing_hours", "days_of_operation", "hashed_verification_code"]
+        fields = ["id", "name", "description", "phone_number", "email", "opening_hours", "closing_hours", "days_of_operation", "locations"]
 
+        
     def to_representation(self, instance):
+        # Check if 'instance' is an OrderedDict (serialized data) or a model instance
+        if isinstance(instance, dict):
+            # If it's an OrderedDict, return it as is
+            return instance
+        # Access the 'location' field directly from the Restaurant instance
+        location_instance = instance.location
+        # Check if 'location' is an instance of Location, convert it to a dict
+        if location_instance:
+            location_data = LocationSerializer(location_instance).data
+        else:
+            location_data = None
+        # Manually include the serialized location
         data = super().to_representation(instance)
-        # Exclude 'hashed_verification_code' from the serialized data
-        data.pop('hashed_verification_code', None)
+        data["location"] = location_data
         return data
+        
 
     def save(self, user):
-        # Assuming your Restaurant model has a 'user' field
         return Restaurant.objects.create(
             user=user,
-            hashed_verification_code=self.validated_data.get('hashed_verification_code'),
             name=self.validated_data.get("name"),
             description=self.validated_data.get("description"),
             phone_number=self.validated_data.get("phone_number"),
@@ -93,52 +148,60 @@ class RestaurantSerializer(serializers.ModelSerializer):
             opening_hours=self.validated_data.get("opening_hours"),
             closing_hours=self.validated_data.get("closing_hours"),
             days_of_operation=self.validated_data.get("days_of_operation")
-            # Include other fields here...
+            
         )
 
+# Define serializer for restaurant detail update
+class UpdateRestaurantDetailsSerializer(serializers.Serializer):
+    name  = serializers.CharField(required=False)
+    description = serializers.CharField(required=False)
+    phone_number = serializers.CharField(required=False)
+    email = serializers.EmailField(required=False)
+    opening_hours = serializers.TimeField(required=False)
+    closing_hours = serializers.TimeField(required=False)
+    days_of_operation = serializers.CharField(required=False)
 
-# Define serializer for Location
-class LocationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Location
-        fields = ["id", "street", "city", "state", "latitude", "longitude"]
 
-
-
-# Define serializer for reataurant detail update
-# class UpdateRestaurantDetailsSerializer(serializers.Serializer):
-#     name = serializers.CharField(required=False)
-#     description = serializers.CharField(required=False)
-#     opening_hours = serializers.TimeField(required=False)
-#     closing_hours = serializers.TimeField(required=False)
-#     days_of_operation = serializers.CharField(required=False)
-#     email = serializers.EmailField(required=False)  
-
-#     def update(self, instance, validated_data):
-#         # Update the instance with the validated data
-#         instance.name = validated_data.get("name", instance.name)
-#         instance.description = validated_data.get("description", instance.description)
-#         instance.opening_hours = validated_data.get("opening_hours", instance.opening_hours)
-#         instance.closing_hours = validated_data.get("closing_hours", instance.closing_hours)
-#         instance.days_of_operation = validated_data.get("days_of_operation", instance.days_of_operation)
-    
+    def update(self, instance, validated_data):
+        # Update the instance with the validated data
+        instance.name = validated_data.get("name", instance.name)
+        instance.description = validated_data.get("description", instance.description)
+        instance.phone_number = validated_data.get("phone_number", instance.phone_number)
+        instance.email = validated_data.get("email", instance.email)
+        instance.opening_hours = validated_data.get("opening_hours", instance.opening_hours)
+        instance.closing_hours = validated_data.get("closing_hours", instance.closing_hours)
+        instance.days_of_operation = validated_data.get("days_of_operation", instance.days_of_operation)
         
-#         # Save the updated instance
-#         instance.save()
+        # Save the updated instance
+        instance.save()
 
-#         return instance
+        return instance
+
+
+# Category model serializer
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ("id", "name", "description")
 
     
+# MenuItem model serializer
+class MenuSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Menu
+        fields = ("id",  "name", "description", "price", "category")
+
+
 # Define serializer for user logout
 class LogoutUserSerializer(serializers.Serializer):
     refresh_token=serializers.CharField()
 
     default_error_message = {
-        'bad_token': ('Token is expired or invalid')
+        "bad_token": ("Token is expired or invalid")
     }
 
     def validate(self, attrs):
-        self.token = attrs.get('refresh_token')
+        self.token = attrs.get("refresh_token")
 
         return attrs
 
@@ -147,7 +210,5 @@ class LogoutUserSerializer(serializers.Serializer):
             token=RefreshToken(self.token)
             token.blacklist()
         except TokenError:
-            return self.fail('bad_token')
+            return self.fail("bad_token")
 
-
-    

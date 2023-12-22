@@ -1,6 +1,7 @@
 from django.contrib.auth.backends import ModelBackend
 from .models import User
 
+
 class CustomBackend(ModelBackend):
     def authenticate(self, request, hashed_verification_code=None, **kwargs):
         try:
