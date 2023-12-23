@@ -1,9 +1,7 @@
 from rest_framework import serializers
-from .models import User, Address, Restaurant, Location, Category, Menu
+from .models import User, Address, Restaurant, Location, Category, Menu, Cart, Order
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from django.contrib.gis.geos import Point
-from django.core.serializers.json import DjangoJSONEncoder
-
 
 
 # Define serializer for user registration
@@ -43,13 +41,6 @@ class  UpdateUserEmailSerializer(serializers.Serializer):
 class  UpdateUserPhoneNumberSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
 
-
-# class PointSerializer(serializers.BaseSerializer):
-#     def to_representation(self, obj):
-#         return {'longitude': obj.x, 'latitude': obj.y}
-
-#     def to_internal_value(self, data):
-#         return Point(data['longitude'], data['latitude'])
     
 class PointSerializer(serializers.BaseSerializer):
     def to_representation(self, obj):
@@ -62,7 +53,6 @@ class PointSerializer(serializers.BaseSerializer):
             return Point(x=data['longitude'], y=data['latitude'])
         return None
     
-
 
 # Define serializer for address
 class AddressSerializer(serializers.ModelSerializer):
@@ -190,6 +180,31 @@ class MenuSerializer(serializers.ModelSerializer):
     class Meta:
         model = Menu
         fields = ("id",  "name", "description", "price", "category")
+
+
+class CartSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Cart
+        fields = ["id", "user", "item", "quantity", "created_at"]
+        read_only_fields = ["id", "created_at"]  
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ["id", "user", "item", "status", "quantity", "price", "order_date", "delivered", "paid_for", "cancel"]
+        read_only_fields = ["id", "order_date"]
+
+    def create(self, validated_data):
+        # Custom create method to calculate the price based on the quantity and item price
+        quantity = validated_data.get("quantity", 1)
+        item = validated_data["item"]
+        item_price = item.price  
+
+        total_price = item_price * quantity
+
+        validated_data["price"] = total_price
+        return super().create(validated_data)
 
 
 # Define serializer for user logout

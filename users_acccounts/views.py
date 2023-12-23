@@ -12,7 +12,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
 from django.contrib.gis.geos import Point
 from django.contrib.gis.db.models.functions import Distance
-# from django.core.serializers.json import DjangoJSONEncoder
+from decimal import Decimal
 import json
 
 
@@ -1064,6 +1064,312 @@ class SearchRestaurantByLocationView(APIView):
         else:
             return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
 
+
+
+# Define view to add item to cart
+class AddToCartView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, item_id):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+
+            # Try to get the item from the cart
+            try:
+                cart_item = Cart.objects.get(user=user, item_id=item_id)
+            except Cart.DoesNotExist:
+                cart_item = None
+
+            if cart_item:
+                # If the item exists, increment the quantity
+                cart_item.quantity += 1
+                cart_item.save()
+            else:
+                # If the item doesn't exist, create a new cart item
+                cart_item = Cart(user=user, item_id=item_id, quantity=1)
+                cart_item.save()
+
+            serializer = CartSerializer(cart_item)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+
+
+
+# Define view to update cart item
+class UpdateCartItemView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, item_id):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+
+            # Try to get the item from the cart
+            try:
+                cart_item = Cart.objects.get(user=user, item_id=item_id)
+            except Cart.DoesNotExist:
+                return Response({"Message": "Item not found in the cart"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Validate and update the quantity
+            serializer = CartSerializer(cart_item, data=request.data, partial=True)
+            if serializer.is_valid():
+                cart_item.quantity = serializer.validated_data.get('quantity', cart_item.quantity)
+                cart_item.save()
+
+                updated_serializer = CartSerializer(cart_item)
+                return Response(updated_serializer.data, status=status.HTTP_200_OK)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+
+
+
+# Define view to delete an item from user cart
+class DeleteCartItemView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, item_id):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+
+            # Try to get the item from the cart
+            try:
+                cart_item = Cart.objects.get(user=user, item_id=item_id)
+            except Cart.DoesNotExist:
+                return Response({"Message": "Item not found in the cart"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Delete the item from the cart
+            cart_item.delete()
+
+            return Response({"Message": "Item deleted successfully"}, status=status.HTTP_200_OK)
+
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+        
+
+# Define view to clear user cart
+class ClearCartView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+
+            # Delete all items from the user's cart
+            Cart.objects.filter(user=user).delete()
+
+            return Response({"Message": "All items deleted from the cart successfully"}, status=status.HTTP_200_OK)
+
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+
+
+# Define view to get user cart
+class UserCartView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+
+            # Retrieve all cart items for the user
+            cart_items = Cart.objects.filter(user=user)
+            serializer = CartSerializer(cart_items, many=True)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+        
+
+# Define view to place order
+class MakeOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+
+            # Retrieve cart items for the user
+            cart_items = Cart.objects.filter(user=user)
+
+            if not cart_items.exists():
+                return Response({"Message": "Your cart is empty. Add items before making an order."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Create orders from cart items
+            orders = []
+            total_price = Decimal('0.00')
+
+            for cart_item in cart_items:
+                order = Order(
+                    user=user,
+                    item=cart_item.item,
+                    quantity=cart_item.quantity,
+                    price=cart_item.item.price * cart_item.quantity,
+                    delivered=False,
+                    paid_for=False,
+                    cancel=False
+                )
+                orders.append(order)
+                total_price += order.price
+
+            # Bulk create orders
+            Order.objects.bulk_create(orders)
+
+            # Delete cart items after creating orders
+            cart_items.delete()
+
+            return Response({"message": "Order placed successfully", "total_price": total_price}, status=status.HTTP_201_CREATED)
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+
+
+
+# Define view to enable restaurant update order
+class RestaurantUpdateOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, order_id):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified or not user.is_vendor:
+                return Response({"Message": f"{user.full_name} is not authorized to perform this action."},
+                                status=status.HTTP_403_FORBIDDEN)
+
+            try:
+                order = Order.objects.get(id=order_id, item__restaurant__user=user, cancel=False)
+            except Order.DoesNotExist:
+                return Response({"Message": "Order not found or you don't have permission to update it."},
+                                status=status.HTTP_404_NOT_FOUND)
+
+            serializer = OrderSerializer(order, data=request.data, partial=True)
+
+            if serializer.is_valid():
+                serializer.save()
+                return Response({"message": "Order updated successfully", "order": serializer.data})
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+
+
+# Define view to enable user cancel an order
+class CancelOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, order_id):
+        user = request.user
+
+        try:
+            order = Order.objects.get(id=order_id, user=user, status__lt=3, paid_for=False, delivered=False)
+        except Order.DoesNotExist:
+            return Response(
+                {"Message": "Order not found or you don't have permission to cancel it."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # cancel order
+        order.cancel = True
+        order.save()
+
+        return Response({"Message": "Order canceled successfully."}, status=status.HTTP_200_OK)
+
+
+
+# Define view to get all user order
+class UserOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+
+            # Retrieve all order for the user
+            order_items = Order.objects.filter(user=user)
+            serializer = OrderSerializer(order_items, many=True)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+        
+
+# Define view to get all order place with a restaurant
+class RestaurantOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified or not user.is_vendor:
+                return Response({"Message": f"{user.full_name} is not authorized to perform this action."},
+                                status=status.HTTP_403_FORBIDDEN)
+            
+            # Retrieve all order for the restaurant
+            order_items = Order.objects.filter(item__restaurant__user=user, cancel=False)
+            serializer = OrderSerializer(order_items, many=True)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+
+
+# Define view to get order details
+class OrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, order_id):
+        user = request.user
+
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            # Retrieve the order for the user
+            try:
+                order_item = Order.objects.get(id=order_id, user=user)
+            except Order.DoesNotExist:
+                return Response(
+                    {"Message": "Order not found or you don't have permission to access it."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            serializer = OrderSerializer(order_item)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        else:
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"},
+                            status=status.HTTP_403_FORBIDDEN)
+        
 
 # Define view to logout user 
 class LogoutUserView(APIView):

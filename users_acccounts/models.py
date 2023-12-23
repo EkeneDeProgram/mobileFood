@@ -154,6 +154,7 @@ class Order(models.Model):
     order_date = models.DateTimeField(auto_now=True)
     delivered = models.BooleanField(default=False)
     paid_for = models.BooleanField(default=False)
+    cancel = models.BooleanField(default=False)
 
 
 # Define Cart model
