@@ -12,8 +12,6 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
 from django.contrib.gis.geos import Point
 from django.contrib.gis.db.models.functions import Distance
-from decimal import Decimal
-import json
 
 
 
@@ -56,6 +54,40 @@ class RegistrationView(CreateAPIView):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+
+
+class RegisterVendorView(CreateAPIView):
+    serializer_class = UserSerializer # Specify the serializer class
+
+    # Define method that handles the POST request for user registration.
+    def create(self, request):
+        serializer = self.get_serializer(data=request.data) # Create an instance of the UserSerializer class
+        if serializer.is_valid():
+            user = User.objects.create_user(**serializer.validated_data)
+
+            verification_code = generate_verification_code() # Generate verification code for user
+            hash_verification_code = hash_VC(verification_code) # Hash verification code
+
+            # Update and save user details
+            user.hashed_verification_code = hash_verification_code
+            user.is_vendor = True 
+            user.save()
+
+            # Send email verification code 
+            email = user.email
+            send_verification_email(email, verification_code)
+
+            # Serialize the user data, including the 'id' field
+            serialized_data = VendorSerializer(user).data
+
+            return Response({
+                "User_detail": serialized_data,
+                "Message": f"{user.full_name} a verification code has been sent to {user.email}",
+            },   status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
 
 # Define view to login user with email
 class LoginUserView(APIView):
@@ -446,7 +478,7 @@ class UpdateRestaurantLocationView(APIView):
                         serializer = LocationSerializer(data=request.data)
 
                     if serializer.is_valid():
-                        Location_instance = serializer.save(user=user)
+                        Location_instance = serializer.save(restaurant=restaurant)
 
                         # Manually set the PointField based on latitude and longitude
                         Location_instance.point = Point(serializer.validated_data['latitude'], serializer.validated_data['longitude'])
@@ -1219,20 +1251,19 @@ class MakeOrderView(APIView):
 
             # Create orders from cart items
             orders = []
-            total_price = Decimal('0.00')
 
             for cart_item in cart_items:
                 order = Order(
                     user=user,
                     item=cart_item.item,
+                    restaurant=cart_item.item.restaurant, 
                     quantity=cart_item.quantity,
-                    price=cart_item.item.price * cart_item.quantity,
+                    price=cart_item.item.price,
                     delivered=False,
                     paid_for=False,
                     cancel=False
                 )
                 orders.append(order)
-                total_price += order.price
 
             # Bulk create orders
             Order.objects.bulk_create(orders)
@@ -1240,7 +1271,10 @@ class MakeOrderView(APIView):
             # Delete cart items after creating orders
             cart_items.delete()
 
-            return Response({"message": "Order placed successfully", "total_price": total_price}, status=status.HTTP_201_CREATED)
+            # Serialize the orders to return a list of ordered items with their quantity, price, and name
+            order_serializer = PlaceOrderSerializer(orders, many=True)
+
+            return Response({"message": "Order placed successfully", "ordered_items": order_serializer.data}, status=status.HTTP_201_CREATED)
         else:
             return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
 
@@ -1283,6 +1317,10 @@ class CancelOrderView(APIView):
     def put(self, request, order_id):
         user = request.user
 
+        if not user.deleted and not user.block:
+            if not user.is_verified:
+                return Response({"Message": f"{user.full_name} your account has not been verified"})
+
         try:
             order = Order.objects.get(id=order_id, user=user, status__lt=3, paid_for=False, delivered=False)
         except Order.DoesNotExist:
@@ -1312,7 +1350,7 @@ class UserOrderView(APIView):
 
             # Retrieve all order for the user
             order_items = Order.objects.filter(user=user)
-            serializer = OrderSerializer(order_items, many=True)
+            serializer = PlaceOrderSerializer(order_items, many=True)
 
             return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -1324,22 +1362,27 @@ class UserOrderView(APIView):
 class RestaurantOrderView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
+    def get(self, request, restaurant_id):
         user = request.user
 
         if not user.deleted and not user.block:
             if not user.is_verified or not user.is_vendor:
-                return Response({"Message": f"{user.full_name} is not authorized to perform this action."},
-                                status=status.HTTP_403_FORBIDDEN)
-            
-            # Retrieve all order for the restaurant
-            order_items = Order.objects.filter(item__restaurant__user=user, cancel=False)
-            serializer = OrderSerializer(order_items, many=True)
+                return Response(
+                    {"Message": f"{user.full_name} is not authorized to perform this action."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # Retrieve the restaurant
+            restaurant = get_object_or_404(Restaurant, user=user, id=restaurant_id)
+
+            # Retrieve all orders for items in the restaurant
+            restaurant_orders = Order.objects.filter(restaurant=restaurant, cancel=False)
+            serializer = PlaceOrderSerializer(restaurant_orders, many=True)
 
             return Response(serializer.data, status=status.HTTP_200_OK)
-            
+
         else:
-            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})
+            return Response({"Message": f"{user.full_name} Your account has been blocked/deleted"})        
 
 
 # Define view to get order details

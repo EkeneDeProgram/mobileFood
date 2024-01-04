@@ -5,6 +5,7 @@ from .views import *
 urlpatterns = [
     # User urls
     path("user/register_user/", RegistrationView.as_view(), name="register-user"),
+    path("user/register_vendor/", RegisterVendorView.as_view(), name="register-vendor"),
     path("user/login_user/", LoginUserView.as_view(), name="login-user"),
     path("user/verify_user/", VerifyUserView.as_view(), name="verify-user"),
     path("user/resend_verification_code/", ResendVerificationCodeView.as_view(), name="resend-verification-code"),
@@ -50,6 +51,6 @@ urlpatterns = [
     path("order/cancel_order/<int:order_id>/", CancelOrderView.as_view(), name="cancel-order"),
     # Get order urls
     path("order/user_order/", UserOrderView.as_view(), name="user-order"),
-    path("order/restaurant_order/", RestaurantOrderView.as_view(), name="restaurant-order"),
+    path("order/restaurant_order/<int:restaurant_id>/", RestaurantOrderView.as_view(), name="restaurant-order"),
     path("order/order_details/<int:order_id>/", OrderView.as_view(), name="order-view"),
 ]

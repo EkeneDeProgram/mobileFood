@@ -8,10 +8,30 @@ from django.contrib.gis.geos import Point
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "last_name", "first_name", "email", "phone_number", "is_vendor"]
+        fields = ["id", "last_name", "first_name", "email", "phone_number"]
 
 
     # Method to create a new user based on the validated data
+    def create(self, validated_data):
+        # Return the created user
+        user = User.objects.create_user(
+            email=validated_data["email"],
+            first_name=validated_data.get("first_name"),
+            last_name=validated_data.get("last_name"),
+            phone_number=validated_data.get("phone_number")
+        )
+
+        return user
+    
+
+# Define serializer for vendor registration
+class VendorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["id", "last_name", "first_name", "email", "phone_number", "is_vendor"]
+
+
+    # Method to create a new vendor based on the validated data
     def create(self, validated_data):
         # Return the created user
         user = User.objects.create_user(
@@ -23,6 +43,7 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
         return user
+    
     
 
 # Define serializer for user verification
@@ -56,11 +77,10 @@ class PointSerializer(serializers.BaseSerializer):
 
 # Define serializer for address
 class AddressSerializer(serializers.ModelSerializer):
-    point = PointSerializer(required=False)
 
     class Meta:
         model = Address
-        fields = ["id", "street", "city", "state", "latitude", "longitude", "point"]
+        fields = ["id", "street", "city", "state", "latitude", "longitude"]
 
         extra_kwargs = {
             "latitude": {"required": False},
@@ -88,11 +108,10 @@ class UpdateUserDetailsSerializer(serializers.Serializer):
 
 # Define serializer for location
 class LocationSerializer(serializers.ModelSerializer):
-    point = PointSerializer(required=False)
     
     class Meta:
         model = Location
-        fields = ["id", "street", "city", "state", "latitude", "longitude", "point"]
+        fields = ["id", "street", "city", "state", "latitude", "longitude"]
 
         extra_kwargs = {
             "latitude": {"required": False},
@@ -140,6 +159,7 @@ class RestaurantSerializer(serializers.ModelSerializer):
             days_of_operation=self.validated_data.get("days_of_operation")
             
         )
+
 
 # Define serializer for restaurant detail update
 class UpdateRestaurantDetailsSerializer(serializers.Serializer):
@@ -192,19 +212,17 @@ class CartSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
-        fields = ["id", "user", "item", "status", "quantity", "price", "order_date", "delivered", "paid_for", "cancel"]
+        fields = ["id", "user", "item", "restaurant", "status", "quantity", "price", "order_date", "delivered", "paid_for", "cancel"]
         read_only_fields = ["id", "order_date"]
 
-    def create(self, validated_data):
-        # Custom create method to calculate the price based on the quantity and item price
-        quantity = validated_data.get("quantity", 1)
-        item = validated_data["item"]
-        item_price = item.price  
+    
 
-        total_price = item_price * quantity
+class PlaceOrderSerializer(serializers.ModelSerializer):
+    name = serializers.ReadOnlyField(source="item.name")  
 
-        validated_data["price"] = total_price
-        return super().create(validated_data)
+    class Meta:
+        model = Order
+        fields = ["id", "quantity", "price", "name"]  
 
 
 # Define serializer for user logout

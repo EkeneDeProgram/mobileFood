@@ -148,6 +148,7 @@ class Status(models.Model):
 class Order(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     item = models.ForeignKey(Menu, on_delete=models.CASCADE)
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
     status = models.ForeignKey(Status, on_delete=models.CASCADE, default=1)
     quantity = models.IntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
